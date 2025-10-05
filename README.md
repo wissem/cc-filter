@@ -50,12 +50,13 @@ sudo mv cc-filter /usr/local/bin/
 
 ### 1. Create a Claude Code configuration
 
-Create or update your Claude Code configuration file (usually `~/.config/claude-code/settings.json` or project-specific):
+Create or update your Claude Code configuration file (usually `~/.claude/settings.json` or project-specific):
 
 ```json
 {
   "hooks": {
     "PreToolUse": [{
+      "matcher": "*",
       "hooks": [{
         "type": "command",
         "command": "cc-filter"
@@ -73,12 +74,13 @@ Create or update your Claude Code configuration file (usually `~/.config/claude-
 
 ### 2. Project-specific usage
 
-For project-specific filtering, create `.claude-code/settings.json` in your project root:
+For project-specific filtering, create `.claude/settings.json` in your project root:
 
 ```json
 {
   "hooks": {
     "PreToolUse": [{
+      "matcher": "*",
       "hooks": [{
         "type": "command", 
         "command": "cc-filter"
