@@ -46,6 +46,17 @@ chmod +x cc-filter
 sudo mv cc-filter /usr/local/bin/
 ```
 
+**Windows (PowerShell):**
+```powershell
+# Download the binary
+Invoke-WebRequest -Uri "https://github.com/wissem/cc-filter/releases/latest/download/cc-filter-windows-amd64.exe" -OutFile "cc-filter.exe"
+
+# Move to a directory in your PATH (e.g., C:\Windows\System32 or create a custom bin folder)
+Move-Item cc-filter.exe C:\Windows\System32\
+```
+
+Alternatively, you can download `cc-filter-windows-amd64.exe` from the [releases page](https://github.com/wissem/cc-filter/releases/latest) and place it in a directory that's in your PATH.
+
 ## Usage with Claude Code Hooks
 
 ### 1. Create a Claude Code configuration
