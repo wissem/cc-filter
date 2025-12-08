@@ -9,10 +9,17 @@
  ╚═════╝ ╚═════╝     ╚═╝     ╚═╝╚══════╝╚═╝   ╚══════╝╚═╝  ╚═╝
 ```
 
->You are absolutely right, I can read everything from your `.env` file . Ah, I >see the problem. I shouldn't have access to this file!
+>Claude: You are absolutely right, I can read everything from your `.env` file
 
-Claude Code, somewhere
+>Claude: read `.env`
 
+>Me: WTF! `.env` is on my denied list!
+
+>Claude: Ah, I see the problem! I shouldn't have access to this file!
+
+Claude Code, somewhere based on a true story.
+
+## Overview
 cc-filter is a security tool that enforces strict access controls for Claude Code by intercepting and filtering data before it reaches the AI. 
 
 Unlike Claude Code's built-in permissions and CLAUDE.md rules which can be bypassed through various methods (alternative file paths, indirect commands, etc.), cc-filter provides an additional security layer that cannot be circumvented. It prevents Claude from reading sensitive files like `.env`, executing commands that expose credentials, or accessing API keys regardless of how the request is formatted. 
@@ -106,79 +113,6 @@ For project-specific filtering, create `.claude/settings.json` in your project r
   }
 }
 ```
-
-## Standalone Usage
-
-cc-filter accepts stdin input and can be adapted for use with any coding agent or tool that supports command-line filtering:
-
-```bash
-echo "API_KEY=sk-1234567890abcdef" | cc-filter
-# Output: API_KEY=***FILTERED***
-
-# Filter API keys from files
-cat config.txt | cc-filter
-
-# Filter OpenAI keys
-echo "My key is sk-1234567890abcdefghijklmnopqrstuvwxyz123456789012" | cc-filter
-# Output: My key is ***************************************************
-```
-
-### Integration with Other AI Coding Agents
-
-Since cc-filter processes stdin/stdout, it can be integrated with any coding agent that supports:
-- Pre-processing hooks
-- Command-line filters
-- Pipe-based text processing
-
-The tool auto-detects JSON hook format but falls back to plain text filtering, making it compatible with various agent architectures beyond Claude Code. For different AI tools, you may need to add custom hook formats by extending the processors in the `internal/hooks/` directory.
-
-## Filtered Patterns
-
-- API keys (api_key, api-key)
-- Secret keys (secret_key, secret-key)
-- Access tokens (access_token, access-token)
-- Passwords
-- Database URLs
-- JWT tokens
-- Private keys
-- Client secrets
-- Auth tokens
-- OpenAI API keys (sk-...)
-- Slack bot tokens (xoxb-...)
-- Environment variables (KEY=value format)
-
-## File Types Filtered
-
-- .env files
-- .key, .pem, .p12, .pfx files
-- config.json, secrets.json, credentials.json
-- auth.json, keys.json
-
-The tool preserves the structure of your content while replacing sensitive values with `***FILTERED***` or asterisks.
-
-## Logging
-
-cc-filter automatically logs its activity to help you monitor when it's being invoked:
-
-- **Log location**: `~/.cc-filter/filter.log`
-- **Log format**: Standard timestamp with invocation details
-- **Information logged**:
-  - Invocation timestamp
-  - Input type (JSON hook input or plain text)  
-  - Content size (input/output bytes)
-  - Processing duration
-
-### Example log entries:
-```
-2025/09/09 10:30:45 cc-filter invoked at 2025-09-09T10:30:45-07:00
-2025/09/09 10:30:45 Processing completed - Type: JSON hook input, Input: 1024 bytes, Output: 987 bytes, Duration: 2.1ms
-```
-
-### View recent activity:
-```bash
-tail -f ~/.cc-filter/filter.log
-```
-
 ## Configuration
 
 cc-filter uses a flexible configuration system that allows you to extend or customize filtering rules without replacing the built-in defaults.
@@ -268,4 +202,76 @@ echo "COMPANY_API_KEY=abc123def456ghi789jkl012mno345pqr" | ./cc-filter
 ### Configuration Examples
 
 See `configs/example-config.yaml` for a complete example showing all available options.
+
+## Filtered Patterns
+
+- API keys (api_key, api-key)
+- Secret keys (secret_key, secret-key)
+- Access tokens (access_token, access-token)
+- Passwords
+- Database URLs
+- JWT tokens
+- Private keys
+- Client secrets
+- Auth tokens
+- OpenAI API keys (sk-...)
+- Slack bot tokens (xoxb-...)
+- Environment variables (KEY=value format)
+
+## File Types Filtered
+
+- .env files
+- .key, .pem, .p12, .pfx files
+- config.json, secrets.json, credentials.json
+- auth.json, keys.json
+
+The tool preserves the structure of your content while replacing sensitive values with `***FILTERED***` or asterisks.
+
+## Standalone Usage
+
+cc-filter accepts stdin input and can be adapted for use with any coding agent or tool that supports command-line filtering:
+
+```bash
+echo "API_KEY=sk-1234567890abcdef" | cc-filter
+# Output: API_KEY=***FILTERED***
+
+# Filter API keys from files
+cat config.txt | cc-filter
+
+# Filter OpenAI keys
+echo "My key is sk-1234567890abcdefghijklmnopqrstuvwxyz123456789012" | cc-filter
+# Output: My key is ***************************************************
+```
+
+### Integration with Other AI Coding Agents
+
+Since cc-filter processes stdin/stdout, it can be integrated with any coding agent that supports:
+- Pre-processing hooks
+- Command-line filters
+- Pipe-based text processing
+
+The tool auto-detects JSON hook format but falls back to plain text filtering, making it compatible with various agent architectures beyond Claude Code. For different AI tools, you may need to add custom hook formats by extending the processors in the `internal/hooks/` directory.
+
+## Logging
+
+cc-filter automatically logs its activity to help you monitor when it's being invoked:
+
+- **Log location**: `~/.cc-filter/filter.log`
+- **Log format**: Standard timestamp with invocation details
+- **Information logged**:
+  - Invocation timestamp
+  - Input type (JSON hook input or plain text)  
+  - Content size (input/output bytes)
+  - Processing duration
+
+### Example log entries:
+```
+2025/09/09 10:30:45 cc-filter invoked at 2025-09-09T10:30:45-07:00
+2025/09/09 10:30:45 Processing completed - Type: JSON hook input, Input: 1024 bytes, Output: 987 bytes, Duration: 2.1ms
+```
+
+### View recent activity:
+```bash
+tail -f ~/.cc-filter/filter.log
+```
 
