@@ -43,6 +43,13 @@ func main() {
 	inputLength := len(input)
 
 	result := f.Process(input)
+
+	// Check for blocking error from hooks - EXIT CODE 2 BLOCKS THE PROMPT
+	if result.Error != nil {
+		fmt.Fprintln(os.Stderr, result.Error.Error())
+		os.Exit(2) // Exit code 2 = blocks UserPromptSubmit, erases prompt
+	}
+
 	outputLength := len(result.Output)
 
 	fmt.Print(result.Output)
