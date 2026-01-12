@@ -26,6 +26,43 @@ Unlike Claude Code's built-in permissions and CLAUDE.md rules which can be bypas
 
 The tool comes with a comprehensive default configuration for common secrets and allows full customization through editable configuration files. Additionally, cc-filter provides a more powerful and flexible filtering system than basic pattern matching - supporting regex patterns, multiple replacement strategies, file-type aware filtering, and command-line argument analysis for complete protection coverage.
 
+## At a Glance
+
+### 5 Protection Types
+
+| # | Type | Protects Against |
+|---|------|------------------|
+| 1 | **Hard Block** | Reading sensitive files (`.env`, `.pem`, `*secret*`) |
+| 2 | **Smart Redaction** | Secrets inside code files (`.swift`, `.go`, `.py`) |
+| 3 | **Command Block** | Shell commands that expose secrets (`cat .env`) |
+| 4 | **Search Block** | Grep/search patterns for secrets (`grep password`) |
+| 5 | **Prompt Block** | User accidentally typing secrets in prompts |
+
+### 3 Configuration Layers
+
+| # | Layer | Location | Scope |
+|---|-------|----------|-------|
+| 1 | **Default** | `configs/default-rules.yaml` (built-in) | All projects |
+| 2 | **User** | `~/.cc-filter/config.yaml` | All your projects |
+| 3 | **Project** | `./config.yaml` (in project root) | Single project |
+
+**Load order:** Default → User → Project (later overrides earlier)
+
+```
+┌─────────────────────────────────────────┐
+│  Project config (highest priority)      │
+├─────────────────────────────────────────┤
+│  User config                            │
+├─────────────────────────────────────────┤
+│  Default rules (lowest priority)        │
+└─────────────────────────────────────────┘
+```
+
+This lets you:
+- Keep sensible defaults for everyone
+- Add your personal rules globally
+- Override for specific projects when needed
+
 ## Installation
 
 Download the latest release for your platform:
