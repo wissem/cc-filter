@@ -64,6 +64,54 @@ Move-Item cc-filter.exe C:\Windows\System32\
 
 Alternatively, you can download `cc-filter-windows-amd64.exe` from the [releases page](https://github.com/wissem/cc-filter/releases/latest) and place it in a directory that's in your PATH.
 
+## How It Works
+
+cc-filter intercepts data at multiple points in the Claude Code workflow:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        USER PROMPT FLOW                         │
+├─────────────────────────────────────────────────────────────────┤
+│  User types prompt → cc-filter scans → Secrets detected?        │
+│                                          │                      │
+│                                    NO ───┴─── YES               │
+│                                    │           │                │
+│                                    ▼           ▼                │
+│                              Pass through   BLOCK (exit 2)      │
+│                              (exit 0)       + create redacted   │
+│                                             file for reference  │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                        FILE READ FLOW                           │
+├─────────────────────────────────────────────────────────────────┤
+│  Claude reads file → cc-filter checks → Blocked file type?      │
+│                                          │                      │
+│                                    NO ───┴─── YES               │
+│                                    │           │                │
+│                                    ▼           ▼                │
+│                           Scan for secrets   DENY access        │
+│                                    │                            │
+│                              NO ───┴─── YES                     │
+│                              │           │                      │
+│                              ▼           ▼                      │
+│                         Allow read   Redirect to                │
+│                                      redacted copy              │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Exit Codes
+
+cc-filter uses exit codes to communicate with Claude Code hooks:
+
+| Exit Code | Meaning | Effect |
+|-----------|---------|--------|
+| 0 | Success | Content passed through unchanged |
+| 1 | Error | Initialization or processing failed |
+| 2 | **Blocked** | Content rejected, prompt erased from context |
+
+> **Important:** Exit code 2 is crucial for `UserPromptSubmit` hooks. It signals that the prompt should be **blocked AND erased** from the conversation context, preventing the AI from ever seeing the sensitive data.
+
 ## Usage with Claude Code Hooks
 
 ### 1. Create a Claude Code configuration
@@ -85,10 +133,21 @@ Create or update your Claude Code configuration file (usually `~/.claude/setting
         "type": "command",
         "command": "cc-filter"
       }]
+    }],
+    "SessionEnd": [{
+      "hooks": [{
+        "type": "command",
+        "command": "cc-filter"
+      }]
     }]
   }
 }
 ```
+
+**Hook explanations:**
+- **PreToolUse**: Intercepts tool calls (Read, Bash, Grep, Glob) to block or redact sensitive file access
+- **UserPromptSubmit**: Scans user prompts for secrets before they reach Claude (blocks with exit code 2)
+- **SessionEnd**: Cleans up temporary redacted files when the session ends
 
 ### 2. Project-specific usage
 
@@ -100,13 +159,19 @@ For project-specific filtering, create `.claude/settings.json` in your project r
     "PreToolUse": [{
       "matcher": "*",
       "hooks": [{
-        "type": "command", 
+        "type": "command",
         "command": "cc-filter"
       }]
     }],
     "UserPromptSubmit": [{
       "hooks": [{
-        "type": "command", 
+        "type": "command",
+        "command": "cc-filter"
+      }]
+    }],
+    "SessionEnd": [{
+      "hooks": [{
+        "type": "command",
         "command": "cc-filter"
       }]
     }]
@@ -226,6 +291,72 @@ See `configs/example-config.yaml` for a complete example showing all available o
 - auth.json, keys.json
 
 The tool preserves the structure of your content while replacing sensitive values with `***FILTERED***` or asterisks.
+
+## UserPromptSubmit Protection
+
+When you use the `UserPromptSubmit` hook, cc-filter scans your prompts **before** they reach Claude:
+
+### What happens when secrets are detected:
+
+1. **Prompt is blocked** - The submission is rejected with exit code 2
+2. **Prompt is erased** - Claude never sees the sensitive content
+3. **Redacted copy created** - A sanitized version is saved to `/tmp/claude/redacted/user_input_*.txt`
+4. **User notified** - Error message tells you where to find the redacted version
+
+### Example scenario:
+
+```
+You: Here's my config: API_KEY=sk-1234567890abcdef...
+
+cc-filter: BLOCKED: Sensitive content detected in your prompt.
+
+           A redacted version has been saved to:
+             /tmp/claude/redacted/user_input_a1b2c3d4.txt
+
+           Please reference that file.
+```
+
+This prevents accidental exposure of secrets when copy-pasting code or configurations into Claude.
+
+## Smart File Redaction
+
+Instead of simply blocking all potentially sensitive files, cc-filter uses **smart redaction** for source code files:
+
+### How it works:
+
+1. When Claude tries to read a code file, cc-filter scans it for secrets
+2. If secrets are found, a **redacted copy** is created in `/tmp/claude/redacted/`
+3. Claude is redirected to read the redacted version instead
+4. The redacted file includes a header noting it's been filtered
+
+### File types that get smart redaction:
+
+| Category | Extensions |
+|----------|------------|
+| Swift/Obj-C | `.swift`, `.m`, `.h` |
+| JVM | `.kt`, `.java` |
+| Scripting | `.py`, `.rb` |
+| Systems | `.go`, `.rs` |
+| Web | `.js`, `.ts`, `.tsx`, `.jsx` |
+| Config | `.json`, `.yaml`, `.yml`, `.toml`, `.plist`, `.xcconfig` |
+
+Files with names containing `config`, `environment`, `settings`, `secrets`, or `apikeys` are also scanned.
+
+### Redacted file format:
+
+```
+# ***FILTERED*** REDACTED VERSION - Some sensitive values have been masked
+# Original: /path/to/your/config.swift
+
+let apiKey = "***FILTERED***"
+let endpoint = "https://api.example.com"
+```
+
+### Cleanup
+
+Redacted files are stored in `/tmp/claude/redacted/` and are automatically cleaned up when:
+- The `SessionEnd` hook fires (end of Claude Code session)
+- You manually delete the directory
 
 ## Standalone Usage
 
