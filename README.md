@@ -358,6 +358,40 @@ Redacted files are stored in `/tmp/claude/redacted/` and are automatically clean
 - The `SessionEnd` hook fires (end of Claude Code session)
 - You manually delete the directory
 
+## Limitations (Claude Code Hook API)
+
+cc-filter works within the constraints of Claude Code's hook API. Some limitations exist:
+
+### File Reads: Deny + Redirect (Not Seamless)
+
+When secrets are detected in a file, cc-filter:
+1. **Denies** the original read request
+2. **Creates** a redacted copy
+3. **Tells Claude** (via the deny reason) to read the redacted file instead
+4. Claude then reads the redacted file in a second request
+
+**Why not seamless?** The hook API's `updatedInput` feature (which could redirect reads silently) does not work for modifying `file_path` in Read tool calls. This was tested in January 2026 and confirmed as a Claude Code limitation.
+
+### User Prompts: Block Only (Cannot Filter)
+
+Claude Code's `UserPromptSubmit` hook cannot modify prompt content. The only options are:
+- **Allow** the prompt unchanged
+- **Block** the prompt entirely (exit code 2)
+- **Add context** alongside the original prompt
+
+When secrets are detected in a user prompt, cc-filter blocks it and creates a redacted file for reference. The user must manually re-submit referencing that file. **True prompt filtering is not possible** with the current hook API.
+
+### Summary Table
+
+| Feature | Ideal Behavior | Actual Behavior | Reason |
+|---------|---------------|-----------------|--------|
+| File reads | Seamless redirect | Deny + redirect message | `updatedInput` doesn't work for `file_path` |
+| User prompts | Filter and pass through | Block + create redacted file | No API support for prompt modification |
+| Blocked files (.env) | Hard block | Hard block | Works as expected |
+| Clean files | Pass through | Pass through | Works as expected |
+
+These limitations are in Claude Code's hook API, not cc-filter. If Claude Code adds support for true content filtering in the future, cc-filter can be updated to use it.
+
 ## Standalone Usage
 
 cc-filter accepts stdin input and can be adapted for use with any coding agent or tool that supports command-line filtering:

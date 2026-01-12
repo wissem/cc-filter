@@ -82,7 +82,7 @@ func (c *ClaudeHookProcessor) handleReadTool(toolInput map[string]interface{}) (
 		return c.allowTool()
 	}
 
-	// Check if file should be completely blocked
+	// Check if file should be completely blocked (e.g., .env files)
 	if shouldBlock, reason := c.rules.ShouldBlockFile(filePath); shouldBlock {
 		return c.denyTool(reason)
 	}
@@ -91,6 +91,8 @@ func (c *ClaudeHookProcessor) handleReadTool(toolInput map[string]interface{}) (
 	if c.shouldRedactFile(filePath) {
 		redactedPath, wasRedacted, err := c.createRedactedFile(filePath)
 		if err == nil && wasRedacted {
+			// NOTE: updatedInput does NOT work for Read tool file_path (tested Jan 2026)
+			// Falling back to deny+redirect which tells Claude to read the redacted file
 			return c.denyWithRedirect(filePath, redactedPath)
 		}
 	}
@@ -234,6 +236,7 @@ func (c *ClaudeHookProcessor) createRedactedUserInput(content string, filteredCo
 }
 
 // denyWithRedirect blocks the original read and tells Claude to read the redacted version
+// DEPRECATED: Use allowWithRedirect for seamless filtering via updatedInput
 func (c *ClaudeHookProcessor) denyWithRedirect(originalPath, redactedPath string) (string, error) {
 	response := map[string]interface{}{
 		"hookSpecificOutput": map[string]interface{}{
@@ -245,6 +248,22 @@ func (c *ClaudeHookProcessor) denyWithRedirect(originalPath, redactedPath string
 					"A redacted version has been created. Please read this file instead:\n\n"+
 					"    %s",
 				originalPath, redactedPath),
+		},
+	}
+	jsonBytes, _ := json.Marshal(response)
+	return string(jsonBytes), nil
+}
+
+// allowWithRedirect silently redirects the Read tool to the redacted file
+// This uses updatedInput to seamlessly filter content without Claude knowing
+func (c *ClaudeHookProcessor) allowWithRedirect(redactedPath string) (string, error) {
+	response := map[string]interface{}{
+		"hookSpecificOutput": map[string]interface{}{
+			"hookEventName":      "PreToolUse",
+			"permissionDecision": "allow",
+			"updatedInput": map[string]interface{}{
+				"file_path": redactedPath,
+			},
 		},
 	}
 	jsonBytes, _ := json.Marshal(response)
