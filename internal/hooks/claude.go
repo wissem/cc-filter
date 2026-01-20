@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -130,20 +131,36 @@ func (c *ClaudeHookProcessor) processUserPromptSubmit(input map[string]interface
 	prompt, _ := input["prompt"].(string)
 	result := c.rules.FilterContent(prompt)
 
-	// If content was filtered, create temp file and BLOCK the prompt (exit code 2)
+	// If content was filtered, block and show improved UX
 	if result.Filtered {
-		tempPath, err := c.createRedactedUserInput(prompt, result.Content)
-		if err == nil {
-			// Return error to trigger exit code 2 - blocks prompt, erases it from context
-			errorMsg := fmt.Sprintf(
-				"BLOCKED: Sensitive content detected in your prompt.\n\n"+
-					"A redacted version has been saved to:\n  %s\n\n"+
-					"Please reference that file.",
-				tempPath)
-			return "", fmt.Errorf(errorMsg)
+		// Build detected patterns list
+		var patternsDisplay string
+		for _, name := range result.MatchedPatterns {
+			patternsDisplay += fmt.Sprintf("  • %s\n", name)
 		}
-		// Even if temp file fails, still block with generic error
-		return "", fmt.Errorf("BLOCKED: Sensitive content detected. Please remove secrets before submitting.")
+
+		// Copy redacted content to clipboard
+		clipboardStatus := "✓ Copied to clipboard - paste to continue"
+		if err := copyToClipboard(result.Content); err != nil {
+			clipboardStatus = "⚠ Could not copy to clipboard (pbcopy not available)"
+		}
+
+		// Also save to file as backup
+		c.createRedactedUserInput(prompt, result.Content)
+
+		// Build formatted error message
+		separator := "────────────────────────────────────────"
+		errorMsg := fmt.Sprintf(
+			"⛔ BLOCKED: Sensitive content detected\n\n"+
+				"Detected patterns:\n%s\n"+
+				"Your message (redacted):\n%s\n%s\n%s\n\n%s",
+			patternsDisplay,
+			separator,
+			result.Content,
+			separator,
+			clipboardStatus)
+
+		return "", fmt.Errorf(errorMsg)
 	}
 
 	// No sensitive content - pass through unchanged
@@ -274,6 +291,13 @@ func (c *ClaudeHookProcessor) denyTool(reason string) (string, error) {
 	}
 	jsonBytes, _ := json.Marshal(response)
 	return string(jsonBytes), nil
+}
+
+// copyToClipboard copies text to the system clipboard (macOS)
+func copyToClipboard(text string) error {
+	cmd := exec.Command("pbcopy")
+	cmd.Stdin = strings.NewReader(text)
+	return cmd.Run()
 }
 
 func containsAnywhere(s, substr string) bool {

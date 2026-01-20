@@ -257,13 +257,15 @@ func (r *Rules) ShouldBlockCommand(cmd string) (bool, string) {
 }
 
 type FilterResult struct {
-	Content  string
-	Filtered bool
+	Content         string
+	Filtered        bool
+	MatchedPatterns []string // names of patterns that matched
 }
 
 func (r *Rules) FilterContent(text string) FilterResult {
 	filtered := text
 	hasChanged := false
+	matchedPatterns := []string{}
 
 	for i, pattern := range r.compiledPatterns {
 		rule := r.Patterns[i]
@@ -288,8 +290,9 @@ func (r *Rules) FilterContent(text string) FilterResult {
 
 		if filtered != original {
 			hasChanged = true
+			matchedPatterns = append(matchedPatterns, rule.Name)
 		}
 	}
 
-	return FilterResult{Content: filtered, Filtered: hasChanged}
+	return FilterResult{Content: filtered, Filtered: hasChanged, MatchedPatterns: matchedPatterns}
 }
