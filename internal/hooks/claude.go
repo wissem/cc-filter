@@ -162,28 +162,9 @@ func (c *ClaudeHookProcessor) processSessionEnd(input map[string]interface{}) (s
 	return "{}", nil
 }
 
-// shouldRedactFile checks if a file type should be scanned for secrets
+// shouldRedactFile delegates to the rules configuration
 func (c *ClaudeHookProcessor) shouldRedactFile(path string) bool {
-	redactExtensions := []string{
-		".swift", ".m", ".h", ".kt", ".java",
-		".py", ".rb", ".go", ".rs", ".js", ".ts", ".tsx", ".jsx",
-		".json", ".yaml", ".yml", ".toml", ".plist", ".xcconfig",
-	}
-	lowerPath := strings.ToLower(path)
-	for _, ext := range redactExtensions {
-		if strings.HasSuffix(lowerPath, ext) {
-			return true
-		}
-	}
-	// Also redact files with these names
-	baseName := strings.ToLower(filepath.Base(path))
-	sensitiveNames := []string{"config", "environment", "settings", "secrets", "apikeys"}
-	for _, name := range sensitiveNames {
-		if strings.Contains(baseName, name) {
-			return true
-		}
-	}
-	return false
+	return c.rules.ShouldRedactFile(path)
 }
 
 // createRedactedFile reads a file, applies redaction, and writes to cache
