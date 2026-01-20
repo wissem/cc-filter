@@ -33,10 +33,10 @@ The tool comes with a comprehensive default configuration for common secrets and
 | # | Type | Protects Against |
 |---|------|------------------|
 | 1 | **Hard Block** | Reading sensitive files (`.env`, `.pem`, `*secret*`) |
-| 2 | **Smart Redaction** | Secrets inside code files (`.swift`, `.go`, `.py`) |
+| 2 | **Smart Redaction** | Secrets inside code files (configurable, disabled by default) |
 | 3 | **Command Block** | Shell commands that expose secrets (`cat .env`) |
 | 4 | **Search Block** | Grep/search patterns for secrets (`grep password`) |
-| 5 | **Prompt Block** | User accidentally typing secrets in prompts |
+| 5 | **Prompt Block** | User accidentally typing secrets in prompts (auto-copies redacted to clipboard) |
 
 ### 3 Configuration Layers
 
@@ -337,27 +337,37 @@ When you use the `UserPromptSubmit` hook, cc-filter scans your prompts **before*
 
 1. **Prompt is blocked** - The submission is rejected with exit code 2
 2. **Prompt is erased** - Claude never sees the sensitive content
-3. **Redacted copy created** - A sanitized version is saved to `/tmp/claude/redacted/user_input_*.txt`
-4. **User notified** - Error message tells you where to find the redacted version
+3. **Patterns identified** - Shows which secret patterns triggered the block
+4. **Redacted content displayed** - Shows the safe version inline
+5. **Auto-copied to clipboard** - Ready to paste and continue
 
 ### Example scenario:
 
 ```
 You: Here's my config: API_KEY=sk-1234567890abcdef...
 
-cc-filter: BLOCKED: Sensitive content detected in your prompt.
+⛔ BLOCKED: Sensitive content detected
 
-           A redacted version has been saved to:
-             /tmp/claude/redacted/user_input_a1b2c3d4.txt
+Detected patterns:
+  • openai_keys
 
-           Please reference that file.
+Your message (redacted):
+────────────────────────────────────────
+Here's my config: API_KEY=***************************************************
+────────────────────────────────────────
+
+✓ Copied to clipboard - paste to continue
 ```
+
+The redacted content is automatically copied to your clipboard. Just paste to re-submit without the secrets.
 
 This prevents accidental exposure of secrets when copy-pasting code or configurations into Claude.
 
 ## Smart File Redaction
 
-Instead of simply blocking all potentially sensitive files, cc-filter uses **smart redaction** for source code files:
+Instead of simply blocking all potentially sensitive files, cc-filter can use **smart redaction** for source code files.
+
+> **Note:** File redaction is **disabled by default**. You must enable it via configuration.
 
 ### How it works:
 
@@ -366,18 +376,36 @@ Instead of simply blocking all potentially sensitive files, cc-filter uses **sma
 3. Claude is redirected to read the redacted version instead
 4. The redacted file includes a header noting it's been filtered
 
-### File types that get smart redaction:
+### Enabling file redaction:
 
-| Category | Extensions |
-|----------|------------|
-| Swift/Obj-C | `.swift`, `.m`, `.h` |
-| JVM | `.kt`, `.java` |
-| Scripting | `.py`, `.rb` |
-| Systems | `.go`, `.rs` |
-| Web | `.js`, `.ts`, `.tsx`, `.jsx` |
-| Config | `.json`, `.yaml`, `.yml`, `.toml`, `.plist`, `.xcconfig` |
+Add a `redact_files` block to your config (`~/.cc-filter/config.yaml` or project `config.yaml`):
 
-Files with names containing `config`, `environment`, `settings`, `secrets`, or `apikeys` are also scanned.
+```yaml
+redact_files:
+  # File extensions to scan for secrets
+  extensions:
+    - ".swift"
+    - ".ts"
+    - ".go"
+    - ".py"
+    - ".json"
+    - ".yaml"
+
+  # Filename patterns to scan (matches if filename contains pattern)
+  filename_patterns:
+    - "config"
+    - "settings"
+    - "secrets"
+```
+
+### Configuration options:
+
+| Field | Description | Example |
+|-------|-------------|---------|
+| `extensions` | File extensions to scan | `[".swift", ".ts", ".py"]` |
+| `filename_patterns` | Substrings to match in filenames | `["config", "secrets"]` |
+
+**Empty config = disabled.** If neither `extensions` nor `filename_patterns` are set, no files are scanned for redaction.
 
 ### Redacted file format:
 
@@ -416,14 +444,17 @@ Claude Code's `UserPromptSubmit` hook cannot modify prompt content. The only opt
 - **Block** the prompt entirely (exit code 2)
 - **Add context** alongside the original prompt
 
-When secrets are detected in a user prompt, cc-filter blocks it and creates a redacted file for reference. The user must manually re-submit referencing that file. **True prompt filtering is not possible** with the current hook API.
+**True prompt filtering is not possible** with the current hook API. However, cc-filter provides the best possible UX within these constraints:
+- Shows which pattern(s) triggered the block
+- Displays the redacted content inline
+- **Auto-copies redacted content to clipboard** - just paste to continue
 
 ### Summary Table
 
 | Feature | Ideal Behavior | Actual Behavior | Reason |
 |---------|---------------|-----------------|--------|
 | File reads | Seamless redirect | Deny + redirect message | `updatedInput` doesn't work for `file_path` |
-| User prompts | Filter and pass through | Block + create redacted file | No API support for prompt modification |
+| User prompts | Filter and pass through | Block + clipboard copy of redacted | No API support for prompt modification |
 | Blocked files (.env) | Hard block | Hard block | Works as expected |
 | Clean files | Pass through | Pass through | Works as expected |
 
