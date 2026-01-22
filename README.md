@@ -26,6 +26,43 @@ Unlike Claude Code's built-in permissions and CLAUDE.md rules which can be bypas
 
 The tool comes with a comprehensive default configuration for common secrets and allows full customization through editable configuration files. Additionally, cc-filter provides a more powerful and flexible filtering system than basic pattern matching - supporting regex patterns, multiple replacement strategies, file-type aware filtering, and command-line argument analysis for complete protection coverage.
 
+## At a Glance
+
+### 5 Protection Types
+
+| # | Type | Protects Against |
+|---|------|------------------|
+| 1 | **Hard Block** | Reading sensitive files (`.env`, `.pem`, `*secret*`) |
+| 2 | **Smart Redaction** | Secrets inside code files (configurable, disabled by default) |
+| 3 | **Command Block** | Shell commands that expose secrets (`cat .env`) |
+| 4 | **Search Block** | Grep/search patterns for secrets (`grep password`) |
+| 5 | **Prompt Block** | User accidentally typing secrets in prompts (auto-copies redacted to clipboard) |
+
+### 3 Configuration Layers
+
+| # | Layer | Location | Scope |
+|---|-------|----------|-------|
+| 1 | **Default** | `configs/default-rules.yaml` (built-in) | All projects |
+| 2 | **User** | `~/.cc-filter/config.yaml` | All your projects |
+| 3 | **Project** | `./config.yaml` (in project root) | Single project |
+
+**Load order:** Default → User → Project (later overrides earlier)
+
+```
+┌─────────────────────────────────────────┐
+│  Project config (highest priority)      │
+├─────────────────────────────────────────┤
+│  User config                            │
+├─────────────────────────────────────────┤
+│  Default rules (lowest priority)        │
+└─────────────────────────────────────────┘
+```
+
+This lets you:
+- Keep sensible defaults for everyone
+- Add your personal rules globally
+- Override for specific projects when needed
+
 ## Installation
 
 Download the latest release for your platform:
@@ -64,6 +101,54 @@ Move-Item cc-filter.exe C:\Windows\System32\
 
 Alternatively, you can download `cc-filter-windows-amd64.exe` from the [releases page](https://github.com/wissem/cc-filter/releases/latest) and place it in a directory that's in your PATH.
 
+## How It Works
+
+cc-filter intercepts data at multiple points in the Claude Code workflow:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        USER PROMPT FLOW                         │
+├─────────────────────────────────────────────────────────────────┤
+│  User types prompt → cc-filter scans → Secrets detected?        │
+│                                          │                      │
+│                                    NO ───┴─── YES               │
+│                                    │           │                │
+│                                    ▼           ▼                │
+│                              Pass through   BLOCK (exit 2)      │
+│                              (exit 0)       + create redacted   │
+│                                             file for reference  │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                        FILE READ FLOW                           │
+├─────────────────────────────────────────────────────────────────┤
+│  Claude reads file → cc-filter checks → Blocked file type?      │
+│                                          │                      │
+│                                    NO ───┴─── YES               │
+│                                    │           │                │
+│                                    ▼           ▼                │
+│                           Scan for secrets   DENY access        │
+│                                    │                            │
+│                              NO ───┴─── YES                     │
+│                              │           │                      │
+│                              ▼           ▼                      │
+│                         Allow read   Redirect to                │
+│                                      redacted copy              │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Exit Codes
+
+cc-filter uses exit codes to communicate with Claude Code hooks:
+
+| Exit Code | Meaning | Effect |
+|-----------|---------|--------|
+| 0 | Success | Content passed through unchanged |
+| 1 | Error | Initialization or processing failed |
+| 2 | **Blocked** | Content rejected, prompt erased from context |
+
+> **Important:** Exit code 2 is crucial for `UserPromptSubmit` hooks. It signals that the prompt should be **blocked AND erased** from the conversation context, preventing the AI from ever seeing the sensitive data.
+
 ## Usage with Claude Code Hooks
 
 ### 1. Create a Claude Code configuration
@@ -85,10 +170,21 @@ Create or update your Claude Code configuration file (usually `~/.claude/setting
         "type": "command",
         "command": "cc-filter"
       }]
+    }],
+    "SessionEnd": [{
+      "hooks": [{
+        "type": "command",
+        "command": "cc-filter"
+      }]
     }]
   }
 }
 ```
+
+**Hook explanations:**
+- **PreToolUse**: Intercepts tool calls (Read, Bash, Grep, Glob) to block or redact sensitive file access
+- **UserPromptSubmit**: Scans user prompts for secrets before they reach Claude (blocks with exit code 2)
+- **SessionEnd**: Cleans up temporary redacted files when the session ends
 
 ### 2. Project-specific usage
 
@@ -100,13 +196,19 @@ For project-specific filtering, create `.claude/settings.json` in your project r
     "PreToolUse": [{
       "matcher": "*",
       "hooks": [{
-        "type": "command", 
+        "type": "command",
         "command": "cc-filter"
       }]
     }],
     "UserPromptSubmit": [{
       "hooks": [{
-        "type": "command", 
+        "type": "command",
+        "command": "cc-filter"
+      }]
+    }],
+    "SessionEnd": [{
+      "hooks": [{
+        "type": "command",
         "command": "cc-filter"
       }]
     }]
@@ -226,6 +328,137 @@ See `configs/example-config.yaml` for a complete example showing all available o
 - auth.json, keys.json
 
 The tool preserves the structure of your content while replacing sensitive values with `***FILTERED***` or asterisks.
+
+## UserPromptSubmit Protection
+
+When you use the `UserPromptSubmit` hook, cc-filter scans your prompts **before** they reach Claude:
+
+### What happens when secrets are detected:
+
+1. **Prompt is blocked** - The submission is rejected with exit code 2
+2. **Prompt is erased** - Claude never sees the sensitive content
+3. **Patterns identified** - Shows which secret patterns triggered the block
+4. **Redacted content displayed** - Shows the safe version inline
+5. **Auto-copied to clipboard** - Ready to paste and continue
+
+### Example scenario:
+
+```
+You: Here's my config: API_KEY=sk-1234567890abcdef...
+
+⛔ BLOCKED: Sensitive content detected
+
+Detected patterns:
+  • openai_keys
+
+Your message (redacted):
+────────────────────────────────────────
+Here's my config: API_KEY=***************************************************
+────────────────────────────────────────
+
+✓ Copied to clipboard - paste to continue
+```
+
+The redacted content is automatically copied to your clipboard. Just paste to re-submit without the secrets.
+
+This prevents accidental exposure of secrets when copy-pasting code or configurations into Claude.
+
+## Smart File Redaction
+
+Instead of simply blocking all potentially sensitive files, cc-filter can use **smart redaction** for source code files.
+
+> **Note:** File redaction is **disabled by default**. You must enable it via configuration.
+
+### How it works:
+
+1. When Claude tries to read a code file, cc-filter scans it for secrets
+2. If secrets are found, a **redacted copy** is created in `/tmp/claude/redacted/`
+3. Claude is redirected to read the redacted version instead
+4. The redacted file includes a header noting it's been filtered
+
+### Enabling file redaction:
+
+Add a `redact_files` block to your config (`~/.cc-filter/config.yaml` or project `config.yaml`):
+
+```yaml
+redact_files:
+  # File extensions to scan for secrets
+  extensions:
+    - ".swift"
+    - ".ts"
+    - ".go"
+    - ".py"
+    - ".json"
+    - ".yaml"
+
+  # Filename patterns to scan (matches if filename contains pattern)
+  filename_patterns:
+    - "config"
+    - "settings"
+    - "secrets"
+```
+
+### Configuration options:
+
+| Field | Description | Example |
+|-------|-------------|---------|
+| `extensions` | File extensions to scan | `[".swift", ".ts", ".py"]` |
+| `filename_patterns` | Substrings to match in filenames | `["config", "secrets"]` |
+
+**Empty config = disabled.** If neither `extensions` nor `filename_patterns` are set, no files are scanned for redaction.
+
+### Redacted file format:
+
+```
+# ***FILTERED*** REDACTED VERSION - Some sensitive values have been masked
+# Original: /path/to/your/config.swift
+
+let apiKey = "***FILTERED***"
+let endpoint = "https://api.example.com"
+```
+
+### Cleanup
+
+Redacted files are stored in `/tmp/claude/redacted/` and are automatically cleaned up when:
+- The `SessionEnd` hook fires (end of Claude Code session)
+- You manually delete the directory
+
+## Limitations (Claude Code Hook API)
+
+cc-filter works within the constraints of Claude Code's hook API. Some limitations exist:
+
+### File Reads: Deny + Redirect (Not Seamless)
+
+When secrets are detected in a file, cc-filter:
+1. **Denies** the original read request
+2. **Creates** a redacted copy
+3. **Tells Claude** (via the deny reason) to read the redacted file instead
+4. Claude then reads the redacted file in a second request
+
+**Why not seamless?** The hook API's `updatedInput` feature (which could redirect reads silently) does not work for modifying `file_path` in Read tool calls. This was tested in January 2026 and confirmed as a Claude Code limitation.
+
+### User Prompts: Block Only (Cannot Filter)
+
+Claude Code's `UserPromptSubmit` hook cannot modify prompt content. The only options are:
+- **Allow** the prompt unchanged
+- **Block** the prompt entirely (exit code 2)
+- **Add context** alongside the original prompt
+
+**True prompt filtering is not possible** with the current hook API. However, cc-filter provides the best possible UX within these constraints:
+- Shows which pattern(s) triggered the block
+- Displays the redacted content inline
+- **Auto-copies redacted content to clipboard** - just paste to continue
+
+### Summary Table
+
+| Feature | Ideal Behavior | Actual Behavior | Reason |
+|---------|---------------|-----------------|--------|
+| File reads | Seamless redirect | Deny + redirect message | `updatedInput` doesn't work for `file_path` |
+| User prompts | Filter and pass through | Block + clipboard copy of redacted | No API support for prompt modification |
+| Blocked files (.env) | Hard block | Hard block | Works as expected |
+| Clean files | Pass through | Pass through | Works as expected |
+
+These limitations are in Claude Code's hook API, not cc-filter. If Claude Code adds support for true content filtering in the future, cc-filter can be updated to use it.
 
 ## Standalone Usage
 

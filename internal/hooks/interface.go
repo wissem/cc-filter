@@ -19,13 +19,15 @@ func (r *Registry) Register(processor HookProcessor) {
 	r.processors = append(r.processors, processor)
 }
 
-func (r *Registry) Process(input map[string]interface{}) (string, bool) {
+func (r *Registry) Process(input map[string]interface{}) (string, bool, error) {
 	for _, processor := range r.processors {
 		if processor.CanHandle(input) {
-			if result, err := processor.Process(input); err == nil {
-				return result, true
+			result, err := processor.Process(input)
+			if err != nil {
+				return "", true, err // Return the error, mark as handled
 			}
+			return result, true, nil
 		}
 	}
-	return "", false
+	return "", false, nil
 }

@@ -91,3 +91,9 @@ command_blocks:
   - "printenv"
   - "env |"
   - "export |"
+
+# File redaction - DISABLED BY DEFAULT
+# Add extensions/patterns to enable scanning code files for secrets
+redact_files:
+  extensions: []
+  filename_patterns: []

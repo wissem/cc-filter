@@ -26,3 +26,19 @@ search_blocks:
 command_blocks:
   - "cat.*private"
   - "grep.*internal"
+
+# File redaction - scan code files for secrets and create redacted versions
+# Files matching these criteria will be scanned using the patterns above
+redact_files:
+  extensions:
+    - ".swift"
+    - ".py"
+    - ".js"
+    - ".ts"
+    - ".go"
+    - ".json"
+    - ".yaml"
+  filename_patterns:
+    - "config"
+    - "settings"
+    - "secrets"

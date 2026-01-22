@@ -29,8 +29,9 @@ func New() (*Filter, error) {
 }
 
 type ProcessResult struct {
-	Output    string
-	Filtered  bool
+	Output   string
+	Filtered bool
+	Error    error // For blocking errors (exit code 2)
 }
 
 func (f *Filter) Process(input string) ProcessResult {
@@ -39,12 +40,15 @@ func (f *Filter) Process(input string) ProcessResult {
 	if strings.HasPrefix(input, "{") && strings.HasSuffix(input, "}") {
 		var hookData map[string]interface{}
 		if err := json.Unmarshal([]byte(input), &hookData); err == nil {
-			if result, handled := f.hookRegistry.Process(hookData); handled {
-				return ProcessResult{Output: result, Filtered: true}
+			if result, handled, hookErr := f.hookRegistry.Process(hookData); handled {
+				if hookErr != nil {
+					return ProcessResult{Output: "", Filtered: true, Error: hookErr}
+				}
+				return ProcessResult{Output: result, Filtered: true, Error: nil}
 			}
 		}
 	}
 
 	result := f.rules.FilterContent(input)
-	return ProcessResult{Output: result.Content, Filtered: result.Filtered}
+	return ProcessResult{Output: result.Content, Filtered: result.Filtered, Error: nil}
 }

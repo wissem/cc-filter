@@ -14,6 +14,7 @@ type Rules struct {
 	FileBlocks    []string      `yaml:"file_blocks"`
 	SearchBlocks  []string      `yaml:"search_blocks"`
 	CommandBlocks []string      `yaml:"command_blocks"`
+	RedactFiles   RedactFiles   `yaml:"redact_files"`
 
 	// compiled regex patterns
 	compiledPatterns      []*regexp.Regexp
@@ -24,6 +25,11 @@ type PatternRule struct {
 	Name        string `yaml:"name"`
 	Regex       string `yaml:"regex"`
 	Replacement string `yaml:"replacement"`
+}
+
+type RedactFiles struct {
+	Extensions       []string `yaml:"extensions"`
+	FilenamePatterns []string `yaml:"filename_patterns"`
 }
 
 func LoadRules() (*Rules, error) {
@@ -109,7 +115,7 @@ func mergeRules(base *Rules, override *Rules) *Rules {
 		SearchBlocks:  make([]string, 0),
 		CommandBlocks: make([]string, 0),
 	}
-	
+
 	patternMap := make(map[string]PatternRule)
 	for _, pattern := range base.Patterns {
 		patternMap[pattern.Name] = pattern
@@ -125,8 +131,16 @@ func mergeRules(base *Rules, override *Rules) *Rules {
 	result.FileBlocks = mergeStringSlices(base.FileBlocks, override.FileBlocks)
 	result.SearchBlocks = mergeStringSlices(base.SearchBlocks, override.SearchBlocks)
 	result.CommandBlocks = mergeStringSlices(base.CommandBlocks, override.CommandBlocks)
-	
+	result.RedactFiles = mergeRedactFiles(base.RedactFiles, override.RedactFiles)
+
 	return result
+}
+
+func mergeRedactFiles(base, override RedactFiles) RedactFiles {
+	return RedactFiles{
+		Extensions:       mergeStringSlices(base.Extensions, override.Extensions),
+		FilenamePatterns: mergeStringSlices(base.FilenamePatterns, override.FilenamePatterns),
+	}
 }
 
 func mergeStringSlices(base, override []string) []string {
@@ -170,6 +184,32 @@ func (r *Rules) compile() (*Rules, error) {
 	}
 
 	return r, nil
+}
+
+func (r *Rules) ShouldRedactFile(path string) bool {
+	// Empty config = disabled
+	if len(r.RedactFiles.Extensions) == 0 && len(r.RedactFiles.FilenamePatterns) == 0 {
+		return false
+	}
+
+	lowerPath := strings.ToLower(path)
+
+	// Check extensions
+	for _, ext := range r.RedactFiles.Extensions {
+		if ext != "" && strings.HasSuffix(lowerPath, strings.ToLower(ext)) {
+			return true
+		}
+	}
+
+	// Check filename patterns
+	baseName := strings.ToLower(filepath.Base(path))
+	for _, pattern := range r.RedactFiles.FilenamePatterns {
+		if pattern != "" && strings.Contains(baseName, strings.ToLower(pattern)) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (r *Rules) ShouldBlockFile(path string) (bool, string) {
@@ -217,13 +257,15 @@ func (r *Rules) ShouldBlockCommand(cmd string) (bool, string) {
 }
 
 type FilterResult struct {
-	Content  string
-	Filtered bool
+	Content         string
+	Filtered        bool
+	MatchedPatterns []string // names of patterns that matched
 }
 
 func (r *Rules) FilterContent(text string) FilterResult {
 	filtered := text
 	hasChanged := false
+	matchedPatterns := []string{}
 
 	for i, pattern := range r.compiledPatterns {
 		rule := r.Patterns[i]
@@ -248,8 +290,9 @@ func (r *Rules) FilterContent(text string) FilterResult {
 
 		if filtered != original {
 			hasChanged = true
+			matchedPatterns = append(matchedPatterns, rule.Name)
 		}
 	}
 
-	return FilterResult{Content: filtered, Filtered: hasChanged}
+	return FilterResult{Content: filtered, Filtered: hasChanged, MatchedPatterns: matchedPatterns}
 }
