@@ -49,22 +49,31 @@ func (c *ClaudeHookProcessor) Process(input map[string]interface{}) (string, err
 func (c *ClaudeHookProcessor) processPreToolUse(input map[string]interface{}) (string, error) {
 	toolName, _ := input["tool_name"].(string)
 	toolInputRaw, _ := input["tool_input"].(map[string]interface{})
-	
+
 	// Check if this tool should be blocked
 	shouldBlock, reason := c.shouldBlockTool(toolName, toolInputRaw)
-	
+
+	// Only intervene if we need to block
+	// Otherwise, defer to default permission system by not including permissionDecision
+	if shouldBlock {
+		response := map[string]interface{}{
+			"hookSpecificOutput": map[string]interface{}{
+				"hookEventName":             "PreToolUse",
+				"permissionDecision":        "deny",
+				"permissionDecisionReason":  reason,
+			},
+		}
+		responseJSON, err := json.Marshal(response)
+		return string(responseJSON), err
+	}
+
+	// Pass through - let default permission system handle it
 	response := map[string]interface{}{
 		"hookSpecificOutput": map[string]interface{}{
-			"hookEventName":      "PreToolUse",
-			"permissionDecision": "allow",
+			"hookEventName": "PreToolUse",
 		},
 	}
-	
-	if shouldBlock {
-		response["hookSpecificOutput"].(map[string]interface{})["permissionDecision"] = "deny"
-		response["hookSpecificOutput"].(map[string]interface{})["permissionDecisionReason"] = reason
-	}
-	
+
 	responseJSON, err := json.Marshal(response)
 	return string(responseJSON), err
 }
