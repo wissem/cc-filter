@@ -268,16 +268,8 @@ func (c *ClaudeHookProcessor) allowWithRedirect(redactedPath string) (string, er
 	return string(jsonBytes), nil
 }
 
-// allowTool returns a JSON response that approves the tool use
 func (c *ClaudeHookProcessor) allowTool() (string, error) {
-	response := map[string]interface{}{
-		"hookSpecificOutput": map[string]interface{}{
-			"hookEventName":      "PreToolUse",
-			"permissionDecision": "allow",
-		},
-	}
-	jsonBytes, _ := json.Marshal(response)
-	return string(jsonBytes), nil
+	return "", nil
 }
 
 // denyTool returns a JSON response that blocks the tool use
