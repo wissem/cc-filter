@@ -13,8 +13,8 @@ type Filter struct {
 	hookRegistry *hooks.Registry
 }
 
-func New() (*Filter, error) {
-	r, err := rules.LoadRules()
+func New(defaultRulesYAML []byte) (*Filter, error) {
+	r, err := rules.LoadRules(defaultRulesYAML)
 	if err != nil {
 		return nil, err
 	}

@@ -10,8 +10,16 @@ import (
 	"cc-filter/internal/rules"
 )
 
+func testDefaultRules() []byte {
+	data, err := os.ReadFile("../../configs/default-rules.yaml")
+	if err != nil {
+		panic("failed to read default rules for test: " + err.Error())
+	}
+	return data
+}
+
 func TestAllowWithRedirect(t *testing.T) {
-	r, _ := rules.LoadRules()
+	r, _ := rules.LoadRules(testDefaultRules())
 	processor := NewClaudeHookProcessor(r)
 
 	redactedPath := "/tmp/claude/redacted/abc123_config.swift"
@@ -55,7 +63,7 @@ func TestAllowWithRedirect(t *testing.T) {
 }
 
 func TestAllowTool(t *testing.T) {
-	r, _ := rules.LoadRules()
+	r, _ := rules.LoadRules(testDefaultRules())
 	processor := NewClaudeHookProcessor(r)
 
 	result, err := processor.allowTool()
@@ -82,7 +90,7 @@ func TestAllowTool(t *testing.T) {
 }
 
 func TestDenyTool(t *testing.T) {
-	r, _ := rules.LoadRules()
+	r, _ := rules.LoadRules(testDefaultRules())
 	processor := NewClaudeHookProcessor(r)
 
 	reason := "Access denied to sensitive file"
@@ -115,7 +123,7 @@ func TestHandleReadToolWithSecrets(t *testing.T) {
 	content := `let apiKey = "sk-1234567890abcdefghijklmnopqrstuvwxyz123456789012"`
 	os.WriteFile(testFile, []byte(content), 0644)
 
-	r, _ := rules.LoadRules()
+	r, _ := rules.LoadRules(testDefaultRules())
 	processor := NewClaudeHookProcessor(r)
 
 	toolInput := map[string]interface{}{
@@ -167,7 +175,7 @@ func TestHandleReadToolWithoutSecrets(t *testing.T) {
 	content := `let greeting = "Hello, World!"`
 	os.WriteFile(testFile, []byte(content), 0644)
 
-	r, _ := rules.LoadRules()
+	r, _ := rules.LoadRules(testDefaultRules())
 	processor := NewClaudeHookProcessor(r)
 
 	toolInput := map[string]interface{}{
@@ -204,7 +212,7 @@ func TestHandleReadToolBlockedFile(t *testing.T) {
 	content := `API_KEY=secret123`
 	os.WriteFile(testFile, []byte(content), 0644)
 
-	r, _ := rules.LoadRules()
+	r, _ := rules.LoadRules(testDefaultRules())
 	processor := NewClaudeHookProcessor(r)
 
 	toolInput := map[string]interface{}{

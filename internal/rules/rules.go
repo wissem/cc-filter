@@ -32,9 +32,9 @@ type RedactFiles struct {
 	FilenamePatterns []string `yaml:"filename_patterns"`
 }
 
-func LoadRules() (*Rules, error) {
-	// start with defaults
-	defaultRules, err := loadDefaultRules()
+func LoadRules(defaultRulesYAML []byte) (*Rules, error) {
+	// start with embedded defaults
+	defaultRules, err := loadDefaultRules(defaultRulesYAML)
 	if err != nil {
 		return nil, err
 	}
@@ -60,16 +60,10 @@ func LoadRules() (*Rules, error) {
 	return defaultRules.compile()
 }
 
-func loadDefaultRules() (*Rules, error) {
-	configPath := "configs/default-rules.yaml"
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return getMinimalDefaultRules(), nil
-	}
-
+func loadDefaultRules(defaultRulesYAML []byte) (*Rules, error) {
 	var rules Rules
-	if err := yaml.Unmarshal(data, &rules); err != nil {
-		return nil, err
+	if err := yaml.Unmarshal(defaultRulesYAML, &rules); err != nil {
+		return getMinimalDefaultRules(), nil
 	}
 
 	return &rules, nil

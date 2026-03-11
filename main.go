@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	_ "embed"
 	"fmt"
 	"log"
 	"os"
@@ -11,6 +12,9 @@ import (
 	"cc-filter/internal/filter"
 	"cc-filter/internal/logger"
 )
+
+//go:embed configs/default-rules.yaml
+var defaultRulesYAML []byte
 
 // version is set at build time via -ldflags
 var version = "dev"
@@ -32,7 +36,7 @@ func main() {
 
 	start := time.Now()
 
-	f, err := filter.New()
+	f, err := filter.New(defaultRulesYAML)
 	if err != nil {
 		log.Printf("Failed to initialize filter: %v", err)
 		fmt.Fprintf(os.Stderr, "Failed to initialize filter: %v\n", err)
