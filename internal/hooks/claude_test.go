@@ -72,20 +72,8 @@ func TestAllowTool(t *testing.T) {
 		t.Fatalf("allowTool returned error: %v", err)
 	}
 
-	var response map[string]interface{}
-	if err := json.Unmarshal([]byte(result), &response); err != nil {
-		t.Fatalf("Failed to parse JSON response: %v", err)
-	}
-
-	hookOutput := response["hookSpecificOutput"].(map[string]interface{})
-
-	if hookOutput["permissionDecision"] != "allow" {
-		t.Errorf("permissionDecision = %v, want allow", hookOutput["permissionDecision"])
-	}
-
-	// Should NOT have updatedInput
-	if _, exists := hookOutput["updatedInput"]; exists {
-		t.Error("allowTool should not have updatedInput")
+	if result != "" {
+		t.Errorf("allowTool should return empty string, got %q", result)
 	}
 }
 
@@ -124,6 +112,7 @@ func TestHandleReadToolWithSecrets(t *testing.T) {
 	os.WriteFile(testFile, []byte(content), 0644)
 
 	r, _ := rules.LoadRules(testDefaultRules())
+	r.RedactFiles.Extensions = append(r.RedactFiles.Extensions, ".swift")
 	processor := NewClaudeHookProcessor(r)
 
 	toolInput := map[string]interface{}{
@@ -142,29 +131,15 @@ func TestHandleReadToolWithSecrets(t *testing.T) {
 	}
 
 	hookOutput := response["hookSpecificOutput"].(map[string]interface{})
-
-	// Should be "allow" with updatedInput (new behavior)
-	// OR "deny" with redirect message (old behavior)
 	decision := hookOutput["permissionDecision"].(string)
 
-	if decision == "allow" {
-		// New behavior: check updatedInput exists
-		updatedInput, ok := hookOutput["updatedInput"].(map[string]interface{})
-		if !ok {
-			t.Fatal("Expected updatedInput for allow with redirect")
-		}
-		redirectPath := updatedInput["file_path"].(string)
-		if !strings.HasPrefix(redirectPath, "/tmp/claude/redacted/") {
-			t.Errorf("Redirect path should be in /tmp/claude/redacted/, got %v", redirectPath)
-		}
-	} else if decision == "deny" {
-		// Old behavior: check reason contains redirect message
-		reason := hookOutput["permissionDecisionReason"].(string)
-		if !strings.Contains(reason, "/tmp/claude/redacted/") {
-			t.Errorf("Deny reason should contain redirect path, got %v", reason)
-		}
-	} else {
-		t.Errorf("Unexpected permissionDecision: %v", decision)
+	if decision != "deny" {
+		t.Errorf("Expected deny for file with secrets, got %v", decision)
+	}
+
+	reason := hookOutput["permissionDecisionReason"].(string)
+	if !strings.Contains(reason, "/tmp/claude/redacted/") {
+		t.Errorf("Deny reason should contain redirect path, got %v", reason)
 	}
 }
 
@@ -188,20 +163,8 @@ func TestHandleReadToolWithoutSecrets(t *testing.T) {
 		t.Fatalf("handleReadTool returned error: %v", err)
 	}
 
-	var response map[string]interface{}
-	if err := json.Unmarshal([]byte(result), &response); err != nil {
-		t.Fatalf("Failed to parse JSON response: %v", err)
-	}
-
-	hookOutput := response["hookSpecificOutput"].(map[string]interface{})
-
-	// Should be normal allow without updatedInput
-	if hookOutput["permissionDecision"] != "allow" {
-		t.Errorf("permissionDecision = %v, want allow", hookOutput["permissionDecision"])
-	}
-
-	if _, exists := hookOutput["updatedInput"]; exists {
-		t.Error("Clean file should not have updatedInput redirect")
+	if result != "" {
+		t.Errorf("handleReadTool for clean file should return empty string, got %q", result)
 	}
 }
 
