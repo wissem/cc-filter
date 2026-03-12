@@ -43,6 +43,10 @@ patterns:
     regex: 'xoxb-[0-9]{11}-[0-9]{11}-[a-zA-Z0-9]{24}'
     replacement: "mask"
     
+  - name: "bearer_tokens"
+    regex: '(?i)bearer\s+[a-zA-Z0-9_\-\.]+'
+    replacement: "***FILTERED***"
+
   - name: "env_variables"
     regex: '(?m)^[A-Z_][A-Z0-9_]*\s*=\s*.+$'
     replacement: "env_filter"
