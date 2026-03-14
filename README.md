@@ -20,140 +20,55 @@
 Claude Code, somewhere based on a true story.
 
 ## Overview
-cc-filter is a security tool that enforces strict access controls for Claude Code by intercepting and filtering data before it reaches the AI. 
 
-Unlike Claude Code's built-in permissions and CLAUDE.md rules which can be bypassed through various methods (alternative file paths, indirect commands, etc.), cc-filter provides an additional security layer that cannot be circumvented. It prevents Claude from reading sensitive files like `.env`, executing commands that expose credentials, or accessing API keys regardless of how the request is formatted. 
+cc-filter adds a hard security layer in front of Claude Code hooks. It blocks sensitive file access, blocks risky shell/search commands, and redacts secrets from text.
 
-The tool comes with a comprehensive default configuration for common secrets and allows full customization through editable configuration files. Additionally, cc-filter provides a more powerful and flexible filtering system than basic pattern matching - supporting regex patterns, multiple replacement strategies, file-type aware filtering, and command-line argument analysis for complete protection coverage.
+It is designed to protect against bypasses (alternate paths, command tricks, indirect reads) that can slip past normal allow/deny patterns.
 
-## At a Glance
+## What it protects
 
-### 5 Protection Types
+1. **Hard file blocks** (`.env`, key/cert files, secrets files)
+2. **Command blocks** (e.g. commands trying to print secrets)
+3. **Search blocks** (e.g. grep/find patterns targeting secrets)
+4. **Prompt blocks** for `UserPromptSubmit` (exit code `2`, prompt never reaches Claude)
+5. **Optional redaction** for selected source/config files
 
-| # | Type | Protects Against |
-|---|------|------------------|
-| 1 | **Hard Block** | Reading sensitive files (`.env`, `.pem`, `*secret*`) |
-| 2 | **Smart Redaction** | Secrets inside code files (configurable, disabled by default) |
-| 3 | **Command Block** | Shell commands that expose secrets (`cat .env`) |
-| 4 | **Search Block** | Grep/search patterns for secrets (`grep password`) |
-| 5 | **Prompt Block** | User accidentally typing secrets in prompts (auto-copies redacted to clipboard) |
+## Install
 
-### 3 Configuration Layers
+Download the latest release for your platform.
 
-| # | Layer | Location | Scope |
-|---|-------|----------|-------|
-| 1 | **Default** | `configs/default-rules.yaml` (built-in) | All projects |
-| 2 | **User** | `~/.cc-filter/config.yaml` | All your projects |
-| 3 | **Project** | `./config.yaml` (in project root) | Single project |
-
-**Load order:** Default → User → Project (later overrides earlier)
-
-```
-┌─────────────────────────────────────────┐
-│  Project config (highest priority)      │
-├─────────────────────────────────────────┤
-│  User config                            │
-├─────────────────────────────────────────┤
-│  Default rules (lowest priority)        │
-└─────────────────────────────────────────┘
-```
-
-This lets you:
-- Keep sensible defaults for everyone
-- Add your personal rules globally
-- Override for specific projects when needed
-
-## Installation
-
-Download the latest release for your platform:
-
-
-**macOS (Intel):**
+**macOS (Intel)**
 ```bash
 curl -L -o cc-filter https://github.com/wissem/cc-filter/releases/latest/download/cc-filter-darwin-amd64
 chmod +x cc-filter
 sudo mv cc-filter /usr/local/bin/
 ```
 
-
-**macOS (Apple Silicon):**
+**macOS (Apple Silicon)**
 ```bash
 curl -L -o cc-filter https://github.com/wissem/cc-filter/releases/latest/download/cc-filter-darwin-arm64
 chmod +x cc-filter
 sudo mv cc-filter /usr/local/bin/
 ```
 
-**Linux (x86_64):**
+**Linux (x86_64)**
 ```bash
 curl -L -o cc-filter https://github.com/wissem/cc-filter/releases/latest/download/cc-filter-linux-amd64
 chmod +x cc-filter
 sudo mv cc-filter /usr/local/bin/
 ```
 
-**Windows (PowerShell):**
+**Windows (PowerShell)**
 ```powershell
-# Download the binary
 Invoke-WebRequest -Uri "https://github.com/wissem/cc-filter/releases/latest/download/cc-filter-windows-amd64.exe" -OutFile "cc-filter.exe"
-
-# Move to a directory in your PATH (e.g., C:\Windows\System32 or create a custom bin folder)
 Move-Item cc-filter.exe C:\Windows\System32\
 ```
 
-Alternatively, you can download `cc-filter-windows-amd64.exe` from the [releases page](https://github.com/wissem/cc-filter/releases/latest) and place it in a directory that's in your PATH.
+## Quick setup (Claude Code hooks)
 
-## How It Works
-
-cc-filter intercepts data at multiple points in the Claude Code workflow:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        USER PROMPT FLOW                         │
-├─────────────────────────────────────────────────────────────────┤
-│  User types prompt → cc-filter scans → Secrets detected?        │
-│                                          │                      │
-│                                    NO ───┴─── YES               │
-│                                    │           │                │
-│                                    ▼           ▼                │
-│                              Pass through   BLOCK (exit 2)      │
-│                              (exit 0)       + create redacted   │
-│                                             file for reference  │
-└─────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────┐
-│                        FILE READ FLOW                           │
-├─────────────────────────────────────────────────────────────────┤
-│  Claude reads file → cc-filter checks → Blocked file type?      │
-│                                          │                      │
-│                                    NO ───┴─── YES               │
-│                                    │           │                │
-│                                    ▼           ▼                │
-│                           Scan for secrets   DENY access        │
-│                                    │                            │
-│                              NO ───┴─── YES                     │
-│                              │           │                      │
-│                              ▼           ▼                      │
-│                         Allow read   Redirect to                │
-│                                      redacted copy              │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-## Exit Codes
-
-cc-filter uses exit codes to communicate with Claude Code hooks:
-
-| Exit Code | Meaning | Effect |
-|-----------|---------|--------|
-| 0 | Success | Content passed through unchanged |
-| 1 | Error | Initialization or processing failed |
-| 2 | **Blocked** | Content rejected, prompt erased from context |
-
-> **Important:** Exit code 2 is crucial for `UserPromptSubmit` hooks. It signals that the prompt should be **blocked AND erased** from the conversation context, preventing the AI from ever seeing the sensitive data.
-
-## Usage with Claude Code Hooks
-
-### 1. Create a Claude Code configuration
-
-Create or update your Claude Code configuration file (usually `~/.claude/settings.json` or project-specific):
+Add this to Claude settings:
+- global: `~/.claude/settings.json`
+- project-specific: `.claude/settings.json`
 
 ```json
 {
@@ -181,288 +96,7 @@ Create or update your Claude Code configuration file (usually `~/.claude/setting
 }
 ```
 
-**Hook explanations:**
-- **PreToolUse**: Intercepts tool calls (Read, Bash, Grep, Glob) to block or redact sensitive file access
-- **UserPromptSubmit**: Scans user prompts for secrets before they reach Claude (blocks with exit code 2)
-- **SessionEnd**: Cleans up temporary redacted files when the session ends
-
-### 2. Project-specific usage
-
-For project-specific filtering, create `.claude/settings.json` in your project root:
-
-```json
-{
-  "hooks": {
-    "PreToolUse": [{
-      "matcher": "*",
-      "hooks": [{
-        "type": "command",
-        "command": "cc-filter"
-      }]
-    }],
-    "UserPromptSubmit": [{
-      "hooks": [{
-        "type": "command",
-        "command": "cc-filter"
-      }]
-    }],
-    "SessionEnd": [{
-      "hooks": [{
-        "type": "command",
-        "command": "cc-filter"
-      }]
-    }]
-  }
-}
-```
-## Configuration
-
-cc-filter uses a flexible configuration system that allows you to extend or customize filtering rules without replacing the built-in defaults.
-
-### Configuration Files (loaded in order)
-
-1. **Default Rules** - Built-in filtering patterns (`configs/default-rules.yaml`)
-2. **User Configuration** - Your global customizations (`~/.cc-filter/config.yaml`)
-3. **Project Configuration** - Project-specific rules (`config.yaml` in current directory)
-
-### How Configuration Merging Works
-
-**For Patterns:**
-- **Extension**: Add new patterns by giving them unique names
-- **Override**: Replace default patterns by using the same `name`
-
-**For Lists** (file_blocks, search_blocks, command_blocks):
-- **Extension**: All items from all configs are combined (duplicates removed)
-
-### Creating Your Configuration
-
-**No copying required!** Just specify what you want to add or change.
-
-#### Example User Config (`~/.cc-filter/config.yaml`):
-
-```yaml
-patterns:
-  # Add a new custom pattern
-  - name: "company_api_key"
-    regex: 'COMPANY_API_KEY=([a-zA-Z0-9]{32})'
-    replacement: "***FILTERED***"
-
-  # Override the default openai_keys pattern
-  - name: "openai_keys"
-    regex: 'sk-[a-zA-Z0-9]{48}'
-    replacement: "***COMPANY_FILTERED***"
-
-# Add additional file patterns to block
-file_blocks:
-  - "*.private"
-  - "company-secrets.json"
-
-# Add additional search terms to block
-search_blocks:
-  - "internal_token"
-  - "company_secret"
-
-# Add additional command patterns to block
-command_blocks:
-  - "cat.*company"
-  - "grep.*internal"
-```
-
-#### Example Project Config (`config.yaml`):
-
-```yaml
-patterns:
-  # Project-specific API pattern
-  - name: "project_token"
-    regex: 'PROJECT_TOKEN=([a-zA-Z0-9-_]{24})'
-    replacement: "***PROJECT_FILTERED***"
-
-file_blocks:
-  - "deployment-secrets.yaml"
-  - "*.production"
-```
-
-### Pattern Replacement Types
-
-- `"***FILTERED***"` - Replace with literal text
-- `"mask"` - Replace with asterisks (`*`) matching original length
-- `"env_filter"` - For environment variables: `KEY=***FILTERED***`
-
-### Testing Your Configuration
-
-```bash
-# Test custom patterns
-echo "COMPANY_API_KEY=abc123def456ghi789jkl012mno345pqr" | ./cc-filter
-
-# Test file blocking (when used with Claude Code hooks)
-# Attempts to read company-secrets.json will be blocked
-
-# Test search blocking (when used with Claude Code hooks)
-# Searches containing "internal_token" will be blocked
-```
-
-### Configuration Examples
-
-See `configs/example-config.yaml` for a complete example showing all available options.
-
-## Filtered Patterns
-
-- API keys (api_key, api-key)
-- Secret keys (secret_key, secret-key)
-- Access tokens (access_token, access-token)
-- Passwords
-- Database URLs
-- JWT tokens
-- Private keys
-- Client secrets
-- Auth tokens
-- OpenAI API keys (sk-...)
-- Slack bot tokens (xoxb-...)
-- Environment variables (KEY=value format)
-
-## File Types Filtered
-
-- .env files
-- .key, .pem, .p12, .pfx files
-- config.json, secrets.json, credentials.json
-- auth.json, keys.json
-
-The tool preserves the structure of your content while replacing sensitive values with `***FILTERED***` or asterisks.
-
-## UserPromptSubmit Protection
-
-When you use the `UserPromptSubmit` hook, cc-filter scans your prompts **before** they reach Claude:
-
-### What happens when secrets are detected:
-
-1. **Prompt is blocked** - The submission is rejected with exit code 2
-2. **Prompt is erased** - Claude never sees the sensitive content
-3. **Patterns identified** - Shows which secret patterns triggered the block
-4. **Redacted content displayed** - Shows the safe version inline
-5. **Auto-copied to clipboard** - Ready to paste and continue
-
-### Example scenario:
-
-```
-You: Here's my config: API_KEY=sk-1234567890abcdef...
-
-⛔ BLOCKED: Sensitive content detected
-
-Detected patterns:
-  • openai_keys
-
-Your message (redacted):
-────────────────────────────────────────
-Here's my config: API_KEY=***************************************************
-────────────────────────────────────────
-
-✓ Copied to clipboard - paste to continue
-```
-
-The redacted content is automatically copied to your clipboard. Just paste to re-submit without the secrets.
-
-This prevents accidental exposure of secrets when copy-pasting code or configurations into Claude.
-
-## Smart File Redaction
-
-Instead of simply blocking all potentially sensitive files, cc-filter can use **smart redaction** for source code files.
-
-> **Note:** File redaction is **disabled by default**. You must enable it via configuration.
-
-### How it works:
-
-1. When Claude tries to read a code file, cc-filter scans it for secrets
-2. If secrets are found, a **redacted copy** is created in `/tmp/claude/redacted/`
-3. Claude is redirected to read the redacted version instead
-4. The redacted file includes a header noting it's been filtered
-
-### Enabling file redaction:
-
-Add a `redact_files` block to your config (`~/.cc-filter/config.yaml` or project `config.yaml`):
-
-```yaml
-redact_files:
-  # File extensions to scan for secrets
-  extensions:
-    - ".swift"
-    - ".ts"
-    - ".go"
-    - ".py"
-    - ".json"
-    - ".yaml"
-
-  # Filename patterns to scan (matches if filename contains pattern)
-  filename_patterns:
-    - "config"
-    - "settings"
-    - "secrets"
-```
-
-### Configuration options:
-
-| Field | Description | Example |
-|-------|-------------|---------|
-| `extensions` | File extensions to scan | `[".swift", ".ts", ".py"]` |
-| `filename_patterns` | Substrings to match in filenames | `["config", "secrets"]` |
-
-**Empty config = disabled.** If neither `extensions` nor `filename_patterns` are set, no files are scanned for redaction.
-
-### Redacted file format:
-
-```
-# ***FILTERED*** REDACTED VERSION - Some sensitive values have been masked
-# Original: /path/to/your/config.swift
-
-let apiKey = "***FILTERED***"
-let endpoint = "https://api.example.com"
-```
-
-### Cleanup
-
-Redacted files are stored in `/tmp/claude/redacted/` and are automatically cleaned up when:
-- The `SessionEnd` hook fires (end of Claude Code session)
-- You manually delete the directory
-
-## Limitations (Claude Code Hook API)
-
-cc-filter works within the constraints of Claude Code's hook API. Some limitations exist:
-
-### File Reads: Deny + Redirect (Not Seamless)
-
-When secrets are detected in a file, cc-filter:
-1. **Denies** the original read request
-2. **Creates** a redacted copy
-3. **Tells Claude** (via the deny reason) to read the redacted file instead
-4. Claude then reads the redacted file in a second request
-
-**Why not seamless?** The hook API's `updatedInput` feature (which could redirect reads silently) does not work for modifying `file_path` in Read tool calls. This was tested in January 2026 and confirmed as a Claude Code limitation.
-
-### User Prompts: Block Only (Cannot Filter)
-
-Claude Code's `UserPromptSubmit` hook cannot modify prompt content. The only options are:
-- **Allow** the prompt unchanged
-- **Block** the prompt entirely (exit code 2)
-- **Add context** alongside the original prompt
-
-**True prompt filtering is not possible** with the current hook API. However, cc-filter provides the best possible UX within these constraints:
-- Shows which pattern(s) triggered the block
-- Displays the redacted content inline
-- **Auto-copies redacted content to clipboard** - just paste to continue
-
-### Summary Table
-
-| Feature | Ideal Behavior | Actual Behavior | Reason |
-|---------|---------------|-----------------|--------|
-| File reads | Seamless redirect | Deny + redirect message | `updatedInput` doesn't work for `file_path` |
-| User prompts | Filter and pass through | Block + clipboard copy of redacted | No API support for prompt modification |
-| Blocked files (.env) | Hard block | Hard block | Works as expected |
-| Clean files | Pass through | Pass through | Works as expected |
-
-These limitations are in Claude Code's hook API, not cc-filter. If Claude Code adds support for true content filtering in the future, cc-filter can be updated to use it.
-
-## Standalone Usage
-
-cc-filter accepts stdin input and can be adapted for use with any coding agent or tool that supports command-line filtering:
+## Standalone usage
 
 ```bash
 echo "API_KEY=sk-1234567890abcdef" | cc-filter
@@ -476,35 +110,46 @@ echo "My key is sk-1234567890abcdefghijklmnopqrstuvwxyz123456789012" | cc-filter
 # Output: My key is ***************************************************
 ```
 
-### Integration with Other AI Coding Agents
+## Configuration basics
 
-Since cc-filter processes stdin/stdout, it can be integrated with any coding agent that supports:
-- Pre-processing hooks
-- Command-line filters
-- Pipe-based text processing
+Configuration is layered (later overrides earlier):
+1. `configs/default-rules.yaml` (built-in defaults)
+2. `~/.cc-filter/config.yaml` (user-wide)
+3. `./config.yaml` (project)
 
-The tool auto-detects JSON hook format but falls back to plain text filtering, making it compatible with various agent architectures beyond Claude Code. For different AI tools, you may need to add custom hook formats by extending the processors in the `internal/hooks/` directory.
+Merge behavior:
+- `patterns`: add new names, or override defaults by reusing a name
+- `file_blocks`, `search_blocks`, `command_blocks`: merged + deduplicated
 
-## Logging
+Minimal user config example:
 
-cc-filter automatically logs its activity to help you monitor when it's being invoked:
+```yaml
+patterns:
+  - name: "company_api_key"
+    regex: 'COMPANY_API_KEY=([a-zA-Z0-9]{32})'
+    replacement: "***FILTERED***"
 
-- **Log location**: `~/.cc-filter/filter.log`
-- **Log format**: Standard timestamp with invocation details
-- **Information logged**:
-  - Invocation timestamp
-  - Input type (JSON hook input or plain text)  
-  - Content size (input/output bytes)
-  - Processing duration
+file_blocks:
+  - "*.private"
 
-### Example log entries:
-```
-2025/09/09 10:30:45 cc-filter invoked at 2025-09-09T10:30:45-07:00
-2025/09/09 10:30:45 Processing completed - Type: JSON hook input, Input: 1024 bytes, Output: 987 bytes, Duration: 2.1ms
-```
+search_blocks:
+  - "internal_token"
 
-### View recent activity:
-```bash
-tail -f ~/.cc-filter/filter.log
+command_blocks:
+  - "cat.*company"
 ```
 
+For a complete example, see `configs/example-config.yaml`.
+
+## Docs
+
+- [Configuration reference](docs/configuration.md)
+- [Smart file redaction](docs/redaction.md)
+- [Hook behavior and limitations](docs/hooks-and-limitations.md)
+- [Default protected patterns/files](docs/default-rules.md)
+- [Standalone + integrations](docs/integrations.md)
+- [Logging + troubleshooting](docs/troubleshooting.md)
+
+## License
+
+MIT
